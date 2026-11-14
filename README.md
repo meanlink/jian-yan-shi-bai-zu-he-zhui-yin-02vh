@@ -6,6 +6,12 @@
 数据接入（JSON/CSV、字段验证、批次指纹）→ 参数化分析（异步 Python worker）→ 结果复核（指标、图形、明细、解释、批准）→ 定时分发（本地收件箱、CSV/JSON、SHA256）；另有业务总览和审计轨迹。
 三个贯穿全栈的实体：Dataset 数据批次、Job 分析任务、Report 分发计划；辅助 User、Audit、Delivery。
 
+### 分段续传接入（弱网/断线安全）
+`POST /uploads` 建立会话（带 `client_token` 幂等键与整批 SHA256），`PUT /uploads/{id}/chunks/{i}` 逐片上传，`GET /uploads/{id}` 查缺片，`POST /uploads/{id}/complete` 完成确认（可在 `final_chunk` 中同时提交最后一片）。
+- 断线/重启后凭会话 ID 拉取缺片集合续传，已收片不重传；同片号重试内容一致时幂等不重复接收，内容冲突时保留原片并返回 409。
+- 收齐后服务端核对总记录数与整批指纹（浏览器与服务端使用同一套规范化 JSON 哈希），任一不符或字段非法则会话置 `failed`、不生成 Dataset；只有 `completed` 会话产出的批次才对分析开放。
+- 完成确认超时重试与“最后一片同时提交”均走幂等 finalize，行锁加同名唯一约束保证只生成一个完整批次；失败原因（缺片/记录数/指纹/字段）在会话列表与页面可见。
+
 ## 快速启动
 ```bash
 cp .env.example .env
